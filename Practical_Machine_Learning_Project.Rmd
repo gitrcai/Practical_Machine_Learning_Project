@@ -1,0 +1,116 @@
+---
+rweqtitle: "Practical Machine Learning Project"
+author: "Rong Cai"
+date: "November 25, 2016"
+output: html_document
+---
+
+##Practical Machine Learning Project
+
+##Intruduction:
+
+This project will use data set from accelerometers on the belt, forearm, arm, and dumbell of 6 participant to build model on the training data set and predict outcome on the test data set. I will do some pre-process on the data sets. Specially, remove some variables which are constant or missing in most situation. Then, I will divide training set into a new training set and a validation data set. I will build  two different models and validate the models on the validation data set. finally, I will pick a better model applying the model to the test data set and predict the outcome "classe".      
+
+##Loading and Processing the data
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+##Load required packages
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(gbm)
+library(survival)
+library(plyr)
+```
+```{r}
+##Load data from web to my working directory
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile="./pm1-training.csv")
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile="./pm1-testing.csv")
+##Read data to R
+training <- read.csv("pm1-training.csv")
+testing <- read.csv("pm1-testing.csv")
+```
+
+There are 19622 observations and 160 variables in training data set. There are 20 observationa and 160 variables in the testing data set. By viewing training data set, I find out there are some variables with large number of mising values and also some variables will not have any impact on our prediction project such as x, user_name, time variables, and the almost constant variables. Nest step, I will remove these variables.
+
+```{r}
+##Remove variables near zero variance to reduce variables from 160 to 100
+nzv <- nearZeroVar(training)
+training <- training[, -nzv]
+##Remove variables with a lot of NA to reduce variables from 100 to 59
+lotsNA <- sapply(training, function(x) mean(is.na(x))) > 0.90
+training <- training[, lotsNA==F]
+##Remove no impact variables such as ID, name...,to reduce variables from 59 to 54
+training <- training[, -(1:5)]
+##Do the same thing on the testong data set
+nzvt <- nearZeroVar(testing)
+testing <- testing[, -nzvt]
+lotsNAt <- sapply(testing, function(x) mean(is.na(x))) > 0.90
+testing <- testing[, lotsNAt==F]
+testing <- testing[, -(1:5)]
+```
+
+Now, lets divide training data set into two data sets. one of them to use for validattion
+
+```{r}
+set.seed(123)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=F)
+training <- training[inTrain, ]
+validation <- training[-inTrain, ]
+dim(training)
+dim(testing)
+```
+
+##Building Model
+
+```{r results='hide'}
+##Using three different method to build model on training set
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+##Decision trees method (rpart)
+modFit1 <- train(classe ~ ., data=training, method="rpart", trControl=fitControl)
+##Stochastic gradient boosting trees (gbm)
+modFit2 <- train(classe ~ ., data=training, method="gbm", trControl=fitControl)
+##Random forest decision trees (rf)
+modFit3 <- train(classe ~. , data=training, method="rf", trControl=fitControl)
+```
+```{r}
+fancyRpartPlot(modFit1$finalModel)
+modFit2
+modFit3$finalModel
+```
+
+```{r}
+##Prediction on validation data set
+validpred1 <- predict(modFit1, validation)
+validpred2 <- predict(modFit2, validation)
+validpred3 <- predict(modFit3, validation)
+confusionMatrix(validpred1, validation$classe)
+confusionMatrix(validpred2, validation$classe)
+confusionMatrix(validpred3, validation$classe)
+```
+
+From my three methods of prediction, The ramdom forest method have high accruracy. I will apply this model to test data set.   
+
+##Generate Files to submit 
+
+```{r}
+##predict on test data set
+testpred <- predict(modFit3, newdata=testing)
+testpred
+
+# create function to write predictions to files
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+
+# create prediction files to submit
+pml_write_files(as.character(testpred))
+
+
